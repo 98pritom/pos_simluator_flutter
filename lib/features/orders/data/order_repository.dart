@@ -1,12 +1,15 @@
 import '../../../core/database/database_helper.dart';
 import '../../../core/utils/id_generator.dart';
 import '../../cart/domain/cart.dart';
+import '../../inventory/data/inventory_repository.dart';
+import '../../inventory/domain/inventory_transaction.dart';
 import '../domain/order.dart';
 
 class OrderRepository {
   final DatabaseHelper _db;
+  final InventoryRepository _inventoryRepository;
 
-  OrderRepository(this._db);
+  OrderRepository(this._db, this._inventoryRepository);
 
   /// Create order from cart state. Returns saved order.
   Future<Order> createFromCart({
@@ -32,6 +35,14 @@ class OrderRepository {
 
     final items = <OrderItem>[];
     await db.transaction((txn) async {
+      for (final cartItem in cart.items) {
+        await _inventoryRepository.ensureCanSell(
+          productId: cartItem.product.id,
+          quantity: cartItem.quantity,
+          executor: txn,
+        );
+      }
+
       await txn.insert('orders', order.toMap());
 
       for (final cartItem in cart.items) {
@@ -47,10 +58,13 @@ class OrderRepository {
         items.add(orderItem);
         await txn.insert('order_items', orderItem.toMap());
 
-        // Decrement stock
-        await txn.rawUpdate(
-          'UPDATE products SET stock = MAX(0, stock - ?), updated_at = ? WHERE id = ?',
-          [cartItem.quantity, now.toIso8601String(), cartItem.product.id],
+        await _inventoryRepository.addByType(
+          productId: cartItem.product.id,
+          type: InventoryTransactionType.sale,
+          quantity: cartItem.quantity,
+          referenceId: orderId,
+          executor: txn,
+          createdAt: now,
         );
       }
     });
@@ -90,11 +104,45 @@ class OrderRepository {
 
   Future<void> markRefunded(String id) async {
     final db = await _db.database;
-    await db.update(
-      'orders',
-      {'status': 'refunded'},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await db.transaction((txn) async {
+      final orderRows = await txn.query(
+        'orders',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+
+      if (orderRows.isEmpty) {
+        throw StateError('Order not found');
+      }
+
+      final status = orderRows.first['status'] as String?;
+      if (status == 'refunded') {
+        return;
+      }
+
+      final items = await txn.query(
+        'order_items',
+        where: 'order_id = ?',
+        whereArgs: [id],
+      );
+
+      for (final item in items) {
+        await _inventoryRepository.addByType(
+          productId: item['product_id'] as String,
+          type: InventoryTransactionType.refund,
+          quantity: item['quantity'] as int,
+          referenceId: id,
+          executor: txn,
+        );
+      }
+
+      await txn.update(
+        'orders',
+        {'status': 'refunded'},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 }

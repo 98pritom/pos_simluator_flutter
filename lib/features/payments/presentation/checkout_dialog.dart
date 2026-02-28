@@ -69,13 +69,21 @@ class _CheckoutDialogState extends ConsumerState<CheckoutDialog> {
       return;
     }
 
-    // Save order
-    final orderRepo = ref.read(orderRepositoryProvider);
-    final order = await orderRepo.createFromCart(
-      userId: user.id,
-      cart: cart,
-      paymentType: _selectedType.name,
-    );
+    order_model.Order order;
+    try {
+      final orderRepo = ref.read(orderRepositoryProvider);
+      order = await orderRepo.createFromCart(
+        userId: user.id,
+        cart: cart,
+        paymentType: _selectedType.name,
+      );
+    } catch (e) {
+      setState(() {
+        _processing = false;
+        _error = e is StateError ? e.message : 'Unable to complete sale. Please retry.';
+      });
+      return;
+    }
 
     // Generate receipt
     final receipt = _generateReceiptText(order, cart);

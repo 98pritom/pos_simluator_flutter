@@ -164,7 +164,7 @@ class _ProductRestockDialogState extends State<ProductRestockDialog> {
         ElevatedButton(
           onPressed: _confirm,
           style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700),
-          child: const Text('Confirm'),
+          child: const Text('Confirm', style: TextStyle(color: Colors.white)),
         ),
       ],
     );

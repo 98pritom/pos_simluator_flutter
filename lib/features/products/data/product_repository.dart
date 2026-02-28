@@ -8,22 +8,61 @@ class ProductRepository {
 
   Future<List<Product>> getAll({bool activeOnly = true}) async {
     final db = await _db.database;
-    final results = await db.query(
-      'products',
-      where: activeOnly ? 'active = ?' : null,
-      whereArgs: activeOnly ? [1] : null,
-      orderBy: 'name ASC',
+    final results = await db.rawQuery(
+      '''
+      SELECT
+        p.id,
+        p.name,
+        p.price,
+        p.barcode,
+        p.category,
+        p.active,
+        p.created_at,
+        p.updated_at,
+        COALESCE(SUM(
+          CASE
+            WHEN t.type = 'sale' THEN -t.quantity
+            WHEN t.type IN ('restock', 'refund') THEN t.quantity
+            ELSE 0
+          END
+        ), 0) AS stock
+      FROM products p
+      LEFT JOIN inventory_transactions t ON t.productId = p.id
+      ${activeOnly ? 'WHERE p.active = 1' : ''}
+      GROUP BY p.id
+      ORDER BY p.name ASC
+      ''',
     );
     return results.map((m) => Product.fromMap(m)).toList();
   }
 
   Future<Product?> getByBarcode(String barcode) async {
     final db = await _db.database;
-    final results = await db.query(
-      'products',
-      where: 'barcode = ? AND active = 1',
-      whereArgs: [barcode],
-      limit: 1,
+    final results = await db.rawQuery(
+      '''
+      SELECT
+        p.id,
+        p.name,
+        p.price,
+        p.barcode,
+        p.category,
+        p.active,
+        p.created_at,
+        p.updated_at,
+        COALESCE(SUM(
+          CASE
+            WHEN t.type = 'sale' THEN -t.quantity
+            WHEN t.type IN ('restock', 'refund') THEN t.quantity
+            ELSE 0
+          END
+        ), 0) AS stock
+      FROM products p
+      LEFT JOIN inventory_transactions t ON t.productId = p.id
+      WHERE p.barcode = ? AND p.active = 1
+      GROUP BY p.id
+      LIMIT 1
+      ''',
+      [barcode],
     );
     if (results.isEmpty) return null;
     return Product.fromMap(results.first);
@@ -31,11 +70,31 @@ class ProductRepository {
 
   Future<Product?> getById(String id) async {
     final db = await _db.database;
-    final results = await db.query(
-      'products',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
+    final results = await db.rawQuery(
+      '''
+      SELECT
+        p.id,
+        p.name,
+        p.price,
+        p.barcode,
+        p.category,
+        p.active,
+        p.created_at,
+        p.updated_at,
+        COALESCE(SUM(
+          CASE
+            WHEN t.type = 'sale' THEN -t.quantity
+            WHEN t.type IN ('restock', 'refund') THEN t.quantity
+            ELSE 0
+          END
+        ), 0) AS stock
+      FROM products p
+      LEFT JOIN inventory_transactions t ON t.productId = p.id
+      WHERE p.id = ?
+      GROUP BY p.id
+      LIMIT 1
+      ''',
+      [id],
     );
     if (results.isEmpty) return null;
     return Product.fromMap(results.first);
@@ -43,11 +102,31 @@ class ProductRepository {
 
   Future<List<Product>> search(String query) async {
     final db = await _db.database;
-    final results = await db.query(
-      'products',
-      where: '(name LIKE ? OR barcode LIKE ?) AND active = 1',
-      whereArgs: ['%$query%', '%$query%'],
-      orderBy: 'name ASC',
+    final results = await db.rawQuery(
+      '''
+      SELECT
+        p.id,
+        p.name,
+        p.price,
+        p.barcode,
+        p.category,
+        p.active,
+        p.created_at,
+        p.updated_at,
+        COALESCE(SUM(
+          CASE
+            WHEN t.type = 'sale' THEN -t.quantity
+            WHEN t.type IN ('restock', 'refund') THEN t.quantity
+            ELSE 0
+          END
+        ), 0) AS stock
+      FROM products p
+      LEFT JOIN inventory_transactions t ON t.productId = p.id
+      WHERE (p.name LIKE ? OR p.barcode LIKE ?) AND p.active = 1
+      GROUP BY p.id
+      ORDER BY p.name ASC
+      ''',
+      ['%$query%', '%$query%'],
     );
     return results.map((m) => Product.fromMap(m)).toList();
   }
@@ -76,44 +155,6 @@ class ProductRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
-  }
-
-  Future<void> decrementStock(String id, int quantity) async {
-    final db = await _db.database;
-    await db.rawUpdate(
-      'UPDATE products SET stock = MAX(0, stock - ?), updated_at = ? WHERE id = ?',
-      [quantity, DateTime.now().toIso8601String(), id],
-    );
-  }
-
-  Future<void> restockProduct(String productId, int quantity) async {
-    if (quantity <= 0) {
-      throw ArgumentError('Restock quantity must be greater than zero');
-    }
-
-    final db = await _db.database;
-    await db.transaction((txn) async {
-      final results = await txn.query(
-        'products',
-        where: 'id = ? AND active = 1',
-        whereArgs: [productId],
-        limit: 1,
-      );
-
-      if (results.isEmpty) {
-        throw StateError('Product not found');
-      }
-
-      final existing = Product.fromMap(results.first);
-      final updated = existing.copyWith(stock: existing.stock + quantity);
-
-      await txn.update(
-        'products',
-        updated.toMap(),
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
-    });
   }
 
   Future<List<String>> getCategories() async {

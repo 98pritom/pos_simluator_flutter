@@ -7,7 +7,7 @@ import 'package:path/path.dart';
 class DatabaseHelper {
   static Database? _database;
   static const _dbName = 'pos_simulator.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   DatabaseHelper._();
   static final instance = DatabaseHelper._();
@@ -88,6 +88,8 @@ class DatabaseHelper {
       )
     ''');
 
+    await _createInventoryTransactionsTable(db);
+
     // Indexes for common queries
     await db.execute(
       'CREATE INDEX idx_products_barcode ON products(barcode)',
@@ -104,7 +106,64 @@ class DatabaseHelper {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Future migrations go here
+    if (oldVersion < 2) {
+      await _createInventoryTransactionsTable(db);
+      await _migrateLegacyProductStockToInventoryTransactions(db);
+    }
+  }
+
+  Future<void> _createInventoryTransactionsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS inventory_transactions (
+        id TEXT PRIMARY KEY,
+        productId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        createdAt TEXT NOT NULL,
+        referenceId TEXT,
+        FOREIGN KEY (productId) REFERENCES products(id)
+      )
+    ''');
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inventory_product_created ON inventory_transactions(productId, createdAt DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_inventory_reference ON inventory_transactions(referenceId)',
+    );
+  }
+
+  Future<void> _migrateLegacyProductStockToInventoryTransactions(Database db) async {
+    final products = await db.query(
+      'products',
+      columns: ['id', 'stock', 'created_at'],
+    );
+
+    for (final product in products) {
+      final productId = product['id'] as String;
+      final legacyStock = (product['stock'] as int?) ?? 0;
+      if (legacyStock <= 0) {
+        continue;
+      }
+
+      final existing = await db.rawQuery(
+        'SELECT COUNT(1) AS count FROM inventory_transactions WHERE productId = ?',
+        [productId],
+      );
+      final existingCount = (existing.first['count'] as num?)?.toInt() ?? 0;
+      if (existingCount > 0) {
+        continue;
+      }
+
+      await db.insert('inventory_transactions', {
+        'id': 'legacy-$productId',
+        'productId': productId,
+        'type': 'restock',
+        'quantity': legacyStock,
+        'createdAt': (product['created_at'] as String?) ?? DateTime.now().toIso8601String(),
+        'referenceId': null,
+      });
+    }
   }
 
   Future<void> _seedDefaults(Database db) async {
@@ -155,6 +214,15 @@ class DatabaseHelper {
         'active': 1,
         'created_at': now,
         'updated_at': now,
+      });
+
+      await db.insert('inventory_transactions', {
+        'id': 'seed-${p['id']}',
+        'productId': p['id'],
+        'type': 'restock',
+        'quantity': p['stock'],
+        'createdAt': now,
+        'referenceId': 'seed',
       });
     }
   }

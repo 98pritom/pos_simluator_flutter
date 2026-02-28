@@ -309,6 +309,16 @@ class _CartItemTile extends ConsumerWidget {
                   ),
                 ),
                 _qtyButton(Icons.add, () {
+                  if (item.quantity >= item.product.stock) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Insufficient stock for ${item.product.name}'),
+                        backgroundColor: Colors.red.shade700,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                    return;
+                  }
                   ref.read(cartProvider.notifier).updateQuantity(
                     item.product.id,
                     item.quantity + 1,

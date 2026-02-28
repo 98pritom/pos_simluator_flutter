@@ -1,10 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database_helper.dart';
+import '../../inventory/presentation/inventory_providers.dart';
 import '../data/order_repository.dart';
 import '../domain/order.dart';
 
 final orderRepositoryProvider = Provider<OrderRepository>((ref) {
-  return OrderRepository(DatabaseHelper.instance);
+  return OrderRepository(
+    DatabaseHelper.instance,
+    ref.read(inventoryRepositoryProvider),
+  );
 });
 
 /// Orders list — manually refreshed after new order.

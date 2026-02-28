@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database_helper.dart';
+import '../../inventory/domain/inventory_transaction.dart';
+import '../../inventory/presentation/inventory_providers.dart';
 import '../data/product_repository.dart';
 import '../domain/product.dart';
 
@@ -20,7 +22,21 @@ class ProductsController extends AsyncNotifier<List<Product>> {
   }
 
   Future<void> addProduct(Product product) async {
-    await ref.read(productRepositoryProvider).insert(product);
+    final initialStock = product.stock;
+    final productToInsert = product.copyWith(stock: 0);
+
+    await ref.read(productRepositoryProvider).insert(productToInsert);
+
+    if (initialStock > 0) {
+      await ref.read(inventoryRepositoryProvider).addByType(
+        productId: product.id,
+        type: InventoryTransactionType.restock,
+        quantity: initialStock,
+        referenceId: 'initial-stock',
+        createdAt: product.createdAt,
+      );
+    }
+
     await refresh();
   }
 
@@ -29,24 +45,12 @@ class ProductsController extends AsyncNotifier<List<Product>> {
       throw ArgumentError('Restock quantity must be greater than zero');
     }
 
-    await ref.read(productRepositoryProvider).restockProduct(productId, quantity);
-
-    final currentProducts = state.valueOrNull;
-    if (currentProducts == null) {
-      await refresh();
-      return;
-    }
-
-    final updatedProducts = currentProducts
-        .map((product) {
-          if (product.id == productId) {
-            return product.copyWith(stock: product.stock + quantity);
-          }
-          return product;
-        })
-        .toList();
-
-    state = AsyncData(updatedProducts);
+    await ref.read(inventoryNotifierProvider.notifier).addTransaction(
+      productId: productId,
+      type: InventoryTransactionType.restock,
+      quantity: quantity,
+    );
+    await refresh();
   }
 }
 

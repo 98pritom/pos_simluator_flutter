@@ -6,6 +6,7 @@ class Product extends Equatable {
   final double price;
   final String? barcode;
   final String category;
+  // Computed from inventory transactions. Not a source-of-truth persisted value.
   final int stock;
   final bool active;
   final DateTime createdAt;

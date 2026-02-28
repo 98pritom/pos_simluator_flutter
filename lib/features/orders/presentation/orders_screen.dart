@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/order.dart';
 import 'order_providers.dart';
+import '../../products/presentation/product_providers.dart';
 import '../../../core/utils/currency_formatter.dart';
 import 'package:intl/intl.dart';
 
@@ -151,6 +152,7 @@ class _OrderTile extends ConsumerWidget {
               onPressed: () async {
                 await ref.read(orderRepositoryProvider).markRefunded(order.id);
                 ref.invalidate(ordersListProvider);
+                await ref.read(productsControllerProvider.notifier).refresh();
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('REFUND', style: TextStyle(color: Colors.red)),

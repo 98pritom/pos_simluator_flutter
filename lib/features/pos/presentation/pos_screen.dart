@@ -10,6 +10,7 @@ import '../../auth/presentation/auth_provider.dart';
 import '../../orders/presentation/orders_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../settings/presentation/settings_provider.dart';
+import '../../inventory/presentation/inventory_history_screen.dart';
 import '../../payments/presentation/checkout_dialog.dart';
 import '../../../core/services/mock/mock_scanner_service.dart';
 import '../../../core/services/mock/mock_drawer_service.dart';
@@ -67,7 +68,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     final product = await repo.getByBarcode(barcode);
 
     if (product != null) {
-      ref.read(cartProvider.notifier).addProduct(product);
+      _tryAddToCart(product);
       _barcodeController.clear();
     } else {
       if (mounted) {
@@ -80,6 +81,28 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         );
       }
     }
+  }
+
+  void _tryAddToCart(Product product) {
+    final cart = ref.read(cartProvider);
+    final alreadyInCart = cart.items
+        .where((item) => item.product.id == product.id)
+        .fold<int>(0, (sum, item) => sum + item.quantity);
+
+    if (alreadyInCart >= product.stock) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Insufficient stock for ${product.name}'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    ref.read(cartProvider.notifier).addProduct(product);
   }
 
   void _onBarcodeSubmit(String value) {
@@ -333,8 +356,8 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         final product = products[index];
         return ProductGridCard(
           product: product,
-          onTap: () => ref.read(cartProvider.notifier).addProduct(product),
-          onLongPress: isAdmin ? () => _showRestockDialog(context, product) : null,
+          onTap: () => _tryAddToCart(product),
+          onLongPress: isAdmin ? () => _showAdminProductActions(context, product) : null,
         );
       },
     );
@@ -373,7 +396,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   Future<void> _showRestockDialog(BuildContext context, Product product) async {
     final user = ref.read(currentUserProvider);
     if (user?.isAdmin != true) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Only admin can restock products.'),
@@ -393,7 +416,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     try {
       await ref.read(productsControllerProvider.notifier).restockProduct(product.id, quantity);
 
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${product.name} restocked by +$quantity'),
@@ -401,11 +424,50 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         ),
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to restock product: $e'),
           backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showAdminProductActions(BuildContext context, Product product) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A2E),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.add_box, color: Colors.greenAccent),
+              title: const Text('Restock', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(ctx, 'restock'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history, color: Colors.white70),
+              title: const Text('Inventory History', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(ctx, 'history'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (action == 'restock') {
+      if (!context.mounted) return;
+      await _showRestockDialog(context, product);
+      return;
+    }
+
+    if (action == 'history' && context.mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => InventoryHistoryScreen(product: product),
         ),
       );
     }

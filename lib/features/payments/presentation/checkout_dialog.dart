@@ -10,6 +10,7 @@ import '../../cart/domain/cart.dart';
 import '../../cart/presentation/cart_provider.dart';
 import '../../orders/domain/order.dart' as order_model;
 import '../../orders/presentation/order_providers.dart';
+import '../../products/presentation/product_providers.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../settings/presentation/settings_provider.dart';
 import '../../../core/utils/currency_formatter.dart';
@@ -89,9 +90,10 @@ class _CheckoutDialogState extends ConsumerState<CheckoutDialog> {
       await drawer.openDrawer();
     }
 
-    // Clear cart and refresh orders
+    // Clear cart and refresh dependent state
     ref.read(cartProvider.notifier).clearCart();
     ref.invalidate(ordersListProvider);
+    await ref.read(productsControllerProvider.notifier).refresh();
 
     setState(() {
       _processing = false;

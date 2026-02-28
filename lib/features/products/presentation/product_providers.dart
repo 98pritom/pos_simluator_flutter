@@ -7,38 +7,78 @@ final productRepositoryProvider = Provider<ProductRepository>((ref) {
   return ProductRepository(DatabaseHelper.instance);
 });
 
-/// Provides the full product list — refreshed on mutations.
-final productListProvider = FutureProvider<List<Product>>((ref) async {
-  final repo = ref.read(productRepositoryProvider);
-  return repo.getAll();
-});
+class ProductsController extends AsyncNotifier<List<Product>> {
+  @override
+  Future<List<Product>> build() {
+    return ref.read(productRepositoryProvider).getAll();
+  }
+
+  Future<void> refresh() async {
+    state = await AsyncValue.guard(
+      () => ref.read(productRepositoryProvider).getAll(),
+    );
+  }
+
+  Future<void> addProduct(Product product) async {
+    await ref.read(productRepositoryProvider).insert(product);
+    await refresh();
+  }
+}
+
+/// Single source of truth for product list in memory.
+final productsControllerProvider =
+    AsyncNotifierProvider<ProductsController, List<Product>>(
+      ProductsController.new,
+    );
+
+/// Backward-compatible alias used across the app.
+final productListProvider = productsControllerProvider;
 
 /// Search query state.
 final productSearchQueryProvider = StateProvider<String>((ref) => '');
 
 /// Filtered product list based on search query.
-final filteredProductsProvider = FutureProvider<List<Product>>((ref) async {
-  final query = ref.watch(productSearchQueryProvider);
-  final repo = ref.read(productRepositoryProvider);
-  if (query.isEmpty) {
-    return repo.getAll();
-  }
-  return repo.search(query);
+final filteredProductsProvider = Provider<AsyncValue<List<Product>>>((ref) {
+  final query = ref.watch(productSearchQueryProvider).trim().toLowerCase();
+  final productsAsync = ref.watch(productListProvider);
+
+  return productsAsync.whenData((products) {
+    if (query.isEmpty) return products;
+    return products
+        .where(
+          (p) =>
+              p.name.toLowerCase().contains(query) ||
+              (p.barcode?.toLowerCase().contains(query) ?? false),
+        )
+        .toList();
+  });
 });
 
 /// Category filter.
 final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 
 /// Products filtered by category.
-final categoryFilteredProductsProvider = FutureProvider<List<Product>>((ref) async {
-  final products = await ref.watch(filteredProductsProvider.future);
+final categoryFilteredProductsProvider = Provider<AsyncValue<List<Product>>>((ref) {
+  final filteredAsync = ref.watch(filteredProductsProvider);
   final category = ref.watch(selectedCategoryProvider);
-  if (category == null || category.isEmpty) return products;
-  return products.where((p) => p.category == category).toList();
+
+  return filteredAsync.whenData((products) {
+    if (category == null || category.isEmpty) return products;
+    return products.where((p) => p.category == category).toList();
+  });
 });
 
 /// All categories.
-final categoriesProvider = FutureProvider<List<String>>((ref) async {
-  final repo = ref.read(productRepositoryProvider);
-  return repo.getCategories();
+final categoriesProvider = Provider<AsyncValue<List<String>>>((ref) {
+  final productsAsync = ref.watch(productListProvider);
+
+  return productsAsync.whenData((products) {
+    final categories = products
+        .map((p) => p.category)
+        .where((c) => c.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return categories;
+  });
 });

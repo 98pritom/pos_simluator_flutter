@@ -353,7 +353,6 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
 
     if (result != null) {
-      final repo = ref.read(productRepositoryProvider);
       final now = DateTime.now();
       final product = Product(
         id: IdGenerator.generate(),
@@ -365,11 +364,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         createdAt: now,
         updatedAt: now,
       );
-      await repo.insert(product);
-      ref.invalidate(productListProvider);
-      ref.invalidate(filteredProductsProvider);
-      ref.invalidate(categoryFilteredProductsProvider);
-      ref.invalidate(categoriesProvider);
+      await ref.read(productsControllerProvider.notifier).addProduct(product);
     }
   }
 }

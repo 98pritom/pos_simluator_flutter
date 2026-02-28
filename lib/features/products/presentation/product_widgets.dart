@@ -7,11 +7,13 @@ import '../../../core/utils/currency_formatter.dart';
 class ProductGridCard extends StatelessWidget {
   final Product product;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const ProductGridCard({
     super.key,
     required this.product,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -21,6 +23,7 @@ class ProductGridCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: product.stock > 0 ? onTap : null,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -72,6 +75,98 @@ class ProductGridCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class ProductRestockDialog extends StatefulWidget {
+  final Product product;
+
+  const ProductRestockDialog({super.key, required this.product});
+
+  @override
+  State<ProductRestockDialog> createState() => _ProductRestockDialogState();
+}
+
+class _ProductRestockDialogState extends State<ProductRestockDialog> {
+  final TextEditingController _qtyCtrl = TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    final quantity = int.tryParse(_qtyCtrl.text.trim());
+    if (quantity == null || quantity <= 0) {
+      setState(() {
+        _errorText = 'Quantity must be greater than 0';
+      });
+      return;
+    }
+
+    Navigator.pop(context, quantity);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1A1A2E),
+      title: const Text('Restock Product', style: TextStyle(color: Colors.white)),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.product.name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Current stock: ${widget.product.stock}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _qtyCtrl,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Quantity to add',
+                labelStyle: const TextStyle(color: Colors.white70),
+                errorText: _errorText,
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: Colors.greenAccent),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _confirm,
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700),
+          child: const Text('Confirm'),
+        ),
+      ],
     );
   }
 }

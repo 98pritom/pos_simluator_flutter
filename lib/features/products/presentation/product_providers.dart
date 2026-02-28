@@ -23,6 +23,31 @@ class ProductsController extends AsyncNotifier<List<Product>> {
     await ref.read(productRepositoryProvider).insert(product);
     await refresh();
   }
+
+  Future<void> restockProduct(String productId, int quantity) async {
+    if (quantity <= 0) {
+      throw ArgumentError('Restock quantity must be greater than zero');
+    }
+
+    await ref.read(productRepositoryProvider).restockProduct(productId, quantity);
+
+    final currentProducts = state.valueOrNull;
+    if (currentProducts == null) {
+      await refresh();
+      return;
+    }
+
+    final updatedProducts = currentProducts
+        .map((product) {
+          if (product.id == productId) {
+            return product.copyWith(stock: product.stock + quantity);
+          }
+          return product;
+        })
+        .toList();
+
+    state = AsyncData(updatedProducts);
+  }
 }
 
 /// Single source of truth for product list in memory.

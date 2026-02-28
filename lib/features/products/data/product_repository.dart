@@ -86,6 +86,36 @@ class ProductRepository {
     );
   }
 
+  Future<void> restockProduct(String productId, int quantity) async {
+    if (quantity <= 0) {
+      throw ArgumentError('Restock quantity must be greater than zero');
+    }
+
+    final db = await _db.database;
+    await db.transaction((txn) async {
+      final results = await txn.query(
+        'products',
+        where: 'id = ? AND active = 1',
+        whereArgs: [productId],
+        limit: 1,
+      );
+
+      if (results.isEmpty) {
+        throw StateError('Product not found');
+      }
+
+      final existing = Product.fromMap(results.first);
+      final updated = existing.copyWith(stock: existing.stock + quantity);
+
+      await txn.update(
+        'products',
+        updated.toMap(),
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+    });
+  }
+
   Future<List<String>> getCategories() async {
     final db = await _db.database;
     final results = await db.rawQuery(

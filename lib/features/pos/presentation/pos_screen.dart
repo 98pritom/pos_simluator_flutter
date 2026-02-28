@@ -91,6 +91,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
+    final isAdmin = user?.isAdmin == true;
     final productsAsync = ref.watch(categoryFilteredProductsProvider);
     final categories = ref.watch(categoriesProvider);
     final selectedCategory = ref.watch(selectedCategoryProvider);
@@ -125,7 +126,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
                           error: (e, _) => Center(
                             child: Text('Error: $e', style: const TextStyle(color: Colors.red)),
                           ),
-                          data: (products) => _buildProductGrid(products),
+                          data: (products) => _buildProductGrid(products, isAdmin: isAdmin),
                         ),
                       ),
                     ],
@@ -312,7 +313,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
     );
   }
 
-  Widget _buildProductGrid(List<Product> products) {
+  Widget _buildProductGrid(List<Product> products, {required bool isAdmin}) {
     if (products.isEmpty) {
       return const Center(
         child: Text('No products found', style: TextStyle(color: Colors.white38, fontSize: 16)),
@@ -333,6 +334,7 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         return ProductGridCard(
           product: product,
           onTap: () => ref.read(cartProvider.notifier).addProduct(product),
+          onLongPress: isAdmin ? () => _showRestockDialog(context, product) : null,
         );
       },
     );
@@ -365,6 +367,47 @@ class _PosScreenState extends ConsumerState<PosScreen> {
         updatedAt: now,
       );
       await ref.read(productsControllerProvider.notifier).addProduct(product);
+    }
+  }
+
+  Future<void> _showRestockDialog(BuildContext context, Product product) async {
+    final user = ref.read(currentUserProvider);
+    if (user?.isAdmin != true) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Only admin can restock products.'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      return;
+    }
+
+    final quantity = await showDialog<int>(
+      context: context,
+      builder: (_) => ProductRestockDialog(product: product),
+    );
+
+    if (quantity == null) return;
+
+    try {
+      await ref.read(productsControllerProvider.notifier).restockProduct(product.id, quantity);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${product.name} restocked by +$quantity'),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to restock product: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
     }
   }
 }

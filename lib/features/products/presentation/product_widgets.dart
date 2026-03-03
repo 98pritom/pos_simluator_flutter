@@ -249,7 +249,7 @@ class _ProductEditDialogState extends ConsumerState<ProductEditDialog> {
             Navigator.pop(context, result);
           },
           style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700),
-          child: Text(isNew ? 'Add' : 'Save'),
+          child: Text(isNew ? 'Add' : 'Save', style: const TextStyle(color: Colors.white)),
         ),
       ],
     );
